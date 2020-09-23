@@ -1,8 +1,9 @@
-import requests, os, csv
+import requests, os, csv, time, re
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from twilio.rest import Client
 from typing import List, NewType
+from selenium import webdriver
 
 # Load values for the twilio module from the .env file
 load_dotenv()
@@ -112,6 +113,8 @@ def compare(new: ListOfLists, old: ListOfLists) -> str:
     for new_pos in new:
         if new_pos in old:
             continue
+        elif new_pos[0] == 'Status:':
+            changes.append(' '.join(new_pos))
         else:
             msg = [f'Added: {new_pos[0]}', f'Location: {new_pos[1]}', f'Link: {new_pos[2]}', '\n']
             changes.extend(msg)
@@ -124,12 +127,50 @@ def compare(new: ListOfLists, old: ListOfLists) -> str:
     return '\n'.join(changes)
 
 
-url = 'https://boards.greenhouse.io/fetchrewards'
+def scrape_unops(url: str) -> List[str]:
+    """Logs in to the UNOPS application page using credentials defined in a '.env' file. Scrapes the page and returns the status of the application.
+
+    Args:
+        url (str): Url path to the UNOPS log in page.
+
+    Returns:
+        List[str]: Return the status of the application.
+    """
+    options = webdriver.ChromeOptions()
+    options.add_argument("--incognito")
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(executable_path='/Users/evan/programming/resources/chromedriver', options=options)
+
+    driver.get(url)
+    time.sleep(3)
+
+    username = driver.find_element_by_id("MainPageContent_lgnUser_UserName")
+    username.clear()
+    user_name = os.getenv('USERNAME')
+    username.send_keys(user_name)
+
+    password = driver.find_element_by_id("MainPageContent_lgnUser_Password")
+    password.clear()
+    pass_word = os.getenv('PASS')
+    password.send_keys(pass_word)
+
+    submit = driver.find_element_by_id("MainPageContent_lgnUser_btnLogin")
+    submit.click()
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'lxml')
+    data = [re.sub('\W', '', cell.text) for cell in soup.find_all('td', {"class": "p9_status"})]
+    data = ['Status:'] + data
+    return data
+
+
+fetch_url = 'https://boards.greenhouse.io/fetchrewards'
+unops_url = 'https://jobs.unops.org/Pages/Account/Login.aspx?ReturnUrl=%2fpages%2fuser%2fapplications.aspx'
 file = 'last.csv'
 
 
-html = get_data(url)
-new = get_positions(url, html)
+html = get_data(fetch_url)
+new = get_positions(fetch_url, html)
+new.append(scrape_unops(unops_url))
 old = read_csv(file)
 msg = compare(new, old)
 send_text(msg)

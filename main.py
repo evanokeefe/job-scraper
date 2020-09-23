@@ -6,7 +6,6 @@ from typing import List, NewType
 
 # Load values for the twilio module from the .env file
 load_dotenv()
-BeautifulSoup = NewType('BeautifulSoup')
 ListOfLists = List[List[str]]
 
 
